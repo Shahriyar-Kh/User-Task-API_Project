@@ -19,8 +19,11 @@ Route::middleware('auth:api')->group(function () {
     Route::post('auth/refresh', [AuthController::class, 'refresh']);
 
     // 👤 User profile
-    Route::get('users/me', [UserController::class, 'me']);
-    Route::put('users/me', [UserController::class, 'update']);
+    Route::get('me', [UserController::class, 'me']);
+    Route::put('me', [UserController::class, 'update']);
+
+    // ✅ Users list (admin only)
+    Route::get('users', [UserController::class, 'index']);
 
     // ✅ Tasks CRUD
     Route::get('tasks', [TaskController::class, 'index']);
@@ -31,11 +34,4 @@ Route::middleware('auth:api')->group(function () {
 
     // 📂 File Upload (PDF/Image)
     Route::post('import', [ImportController::class, 'upload']);
-});
-
-// ------------------- Admin Routes -------------------
-Route::middleware(['auth:api', 'role:admin'])->prefix('admin')->group(function () {
-    Route::get('users', function () {
-        return App\Models\User::paginate(20);
-    });
 });
