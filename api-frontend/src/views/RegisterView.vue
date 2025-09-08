@@ -1,106 +1,162 @@
 <template>
   <div class="register-container">
     <h2>Register</h2>
+    <form @submit.prevent="handleRegister" class="register-form">
+      <div class="form-group">
+        <label>Name:</label>
+        <input v-model="form.name" type="text" required />
+      </div>
 
-    <!-- ❌ Error Message -->
-    <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
+      <div class="form-group">
+        <label>Email:</label>
+        <input v-model="form.email" type="email" required />
+      </div>
 
-    <form @submit.prevent="register" class="register-form">
-      <input v-model="name" type="text" placeholder="Name" required />
-      <input v-model="email" type="email" placeholder="Email" required />
-      <input v-model="password" type="password" placeholder="Password" required />
-      <input v-model="passwordConfirmation" type="password" placeholder="Confirm Password" required />
-      <button type="submit" :disabled="loading">
-        {{ loading ? 'Registering...' : 'Register' }}
-      </button>
+      <div class="form-group">
+        <label>Password:</label>
+        <input v-model="form.password" type="password" required />
+      </div>
+
+      <div class="form-group">
+        <label>Role:</label>
+        <select v-model="form.role">
+          <option value="user">User</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+
+      <button type="submit" class="btn register-btn">Register</button>
     </form>
+
+    <!-- ❌ Success / Error Messages -->
+    <p v-if="successMessage" class="success">{{ successMessage }}</p>
+    <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
+
+    <!-- Login button below -->
+    <button class="btn login-btn" @click="$router.push('/login')">
+      Already have an account? Login
+    </button>
   </div>
 </template>
 
-<script setup>
-import { ref } from 'vue'
-import api from '@/plugins/axios'
-import { useRouter } from 'vue-router'
+<script>
+import axios from "axios";
 
-const name = ref('')
-const email = ref('')
-const password = ref('')
-const passwordConfirmation = ref('')
-const errorMessage = ref('')
-const loading = ref(false)
-const router = useRouter()
+export default {
+  name: "RegisterView",
+  data() {
+    return {
+      form: {
+        name: "",
+        email: "",
+        password: "",
+        role: "user",
+      },
+      successMessage: "",
+      errorMessage: "",
+    };
+  },
+  methods: {
+    async handleRegister() {
+      this.successMessage = "";
+      this.errorMessage = "";
 
-async function register() {
-  errorMessage.value = ''
-  loading.value = true
-  try {
-    await api.post('/auth/register', {
-      name: name.value,
-      email: email.value,
-      password: password.value,
-      password_confirmation: passwordConfirmation.value, // ✅ Laravel expects this
-    })
+      try {
+        const res = await axios.post("http://127.0.0.1:8000/api/auth/register", this.form);
 
-    // ✅ Redirect to login page with success flag
-    router.push({ path: '/login', query: { registered: 'true' } })
-  } catch (error) {
-    if (error.response?.data?.message) {
-      errorMessage.value = error.response.data.message
-    } else {
-      errorMessage.value = 'Registration failed. Please try again.'
-    }
-  } finally {
-    loading.value = false
-  }
-}
+        // Store token in localStorage
+        localStorage.setItem("token", res.data.access_token);
+        localStorage.setItem("user", JSON.stringify(res.data.user));
+
+        this.successMessage = "Registration successful! 🎉 You are logged in.";
+      } catch (err) {
+        if (err.response && err.response.status === 422) {
+          this.errorMessage = err.response.data.message || "Validation failed!";
+        } else {
+          this.errorMessage = "Something went wrong. Please try again.";
+        }
+      }
+    },
+  },
+};
 </script>
 
 <style scoped>
 .register-container {
   max-width: 400px;
   margin: 50px auto;
-  padding: 20px;
+  padding: 30px;
   border: 1px solid #ddd;
-  border-radius: 8px;
-  background: #fff;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  border-radius: 10px;
+  background-color: #f9f9f9;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+  text-align: center;
 }
 
-h2 {
-  text-align: center;
+.register-container h2 {
   margin-bottom: 20px;
+  color: #333;
 }
 
-.error-message {
-  color: red;
-  font-weight: bold;
-  text-align: center;
+.register-form .form-group {
   margin-bottom: 15px;
+  text-align: left;
 }
 
-.register-form {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+.register-form label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: 600;
+  color: #555;
 }
 
-.register-form input {
+.register-form input,
+.register-form select {
+  width: 100%;
   padding: 10px;
-  border: 1px solid #ccc;
   border-radius: 6px;
+  border: 1px solid #ccc;
+  box-sizing: border-box;
 }
 
-.register-form button {
-  padding: 10px;
-  background: #007bff;
-  color: white;
+.btn {
+  width: 100%;
+  padding: 12px;
+  margin-top: 10px;
   border: none;
   border-radius: 6px;
-  font-weight: bold;
   cursor: pointer;
+  font-weight: 600;
+  transition: 0.3s;
 }
 
-.register-form button:hover {
-  background: #0056b3;
+.register-btn {
+  background-color: #4CAF50;
+  color: white;
+}
+
+.register-btn:hover {
+  background-color: #45a049;
+}
+
+.login-btn {
+  background-color: #f1f1f1;
+  color: #333;
+}
+
+.login-btn:hover {
+  background-color: #ddd;
+}
+
+.success {
+  color: green;
+  margin-top: 15px;
+  font-weight: 500;
+}
+
+.error {
+  color: red;
+  margin-top: 15px;
+  font-weight: 500;
 }
 </style>

@@ -7,9 +7,10 @@ import { useAuthStore } from './stores/auth'  // ✅ import auth store
 
 const app = createApp(App)
 const pinia = createPinia()
+
 app.use(pinia)
 
-// ✅ Initialize auth from localStorage to prevent 401 loops
+// ✅ Restore token & user before router navigation
 const auth = useAuthStore(pinia)
 auth.initFromStorage()
 

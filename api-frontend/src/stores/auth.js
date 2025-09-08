@@ -15,41 +15,58 @@ export const useAuthStore = defineStore('auth', {
     isAuthenticated: (state) => !!state.token,
     userName: (state) => state.user?.name || '',
     userEmail: (state) => state.user?.email || '',
+    userRole: (state) => state.user?.role || 'user',
   },
 
   actions: {
-    // 🔑 Login
-async login(email, password) {
-  this.loading = true
-  this.error = null
-  try {
-    const { data } = await api.post('/auth/login', { email, password })
-    console.log('✅ Login response:', data)
+    // 🔑 Login with proper validation & role redirect
+    async login(email, password) {
+      this.loading = true
+      this.error = null
+      try {
+        const { data } = await api.post('/auth/login', { email, password })
+        console.log('✅ Login response:', data)
 
-    const token = data?.token || data?.access_token || data?.accessToken
-    if (!token) throw new Error('Token not found in response')
+        // ✅ Extract token
+        const token = data.token || data.access_token
+        if (!token) throw new Error('Token not found in response')
 
-    // ✅ Save token first
-    this._setToken(token)
+        // ✅ Save token & user
+        this._setToken(token)
+        this._setUser(data.user)
 
-    // ✅ Fetch user after token is saved
-    await this.fetchMe()
+        // ✅ Role-based redirect
+        if (data.user.role === 'admin') {
+          router.push('/admin-tasks')
+        } else {
+          router.push('/user-tasks')
+        }
 
-    // ✅ Redirect after everything is ready
-    const redirect = router.currentRoute.value.query.redirect || '/tasks'
-    await router.push(redirect)
+        return { user: this.user, token }
+      } catch (e) {
+        console.error('❌ Login error:', e.response?.data || e.message)
 
-    return data
-  } catch (e) {
-    console.error('❌ Login error:', e.response?.data || e.message)
-    this.error = e?.response?.data?.message || e.message
-    throw e
-  } finally {
-    this.loading = false
-  }
-},
-    // 📝 Register
-    async register({ name, email, password }) {
+        // ✅ Custom error messages
+        if (e.response) {
+          if (e.response.status === 404) {
+            this.error = 'Email is not registered'
+          } else if (e.response.status === 401) {
+            this.error = 'Password is incorrect'
+          } else {
+            this.error = 'Login failed. Please try again.'
+          }
+        } else {
+          this.error = 'Network error. Please check your connection.'
+        }
+
+        throw e
+      } finally {
+        this.loading = false
+      }
+    },
+
+    // 📝 Register (auto login after registration)
+    async register({ name, email, password, password_confirmation }) {
       this.loading = true
       this.error = null
       try {
@@ -57,16 +74,26 @@ async login(email, password) {
           name,
           email,
           password,
-          password_confirmation: password, // Laravel expects confirmation
+          password_confirmation: password_confirmation || password,
         })
         console.log('✅ Register response:', data)
 
-        // Redirect to login
-        await router.push({ path: '/login', query: { registered: 'true' } })
-        return data
+        const token = data.token || data.access_token
+        if (token) {
+          this._setToken(token)
+          if (data.user) this._setUser(data.user)
+        } else {
+          console.warn('⚠️ No token returned, user must login manually')
+          return data
+        }
+
+        return { user: this.user, token: this.token }
       } catch (e) {
         console.error('❌ Register error:', e.response?.data || e.message)
-        this.error = e?.response?.data?.message || e.message
+        this.error =
+          e?.response?.data?.message ||
+          Object.values(e?.response?.data?.errors || {})[0]?.[0] ||
+          e.message
         throw e
       } finally {
         this.loading = false
@@ -77,9 +104,7 @@ async login(email, password) {
     async refreshToken() {
       try {
         const { data } = await api.post('/auth/refresh')
-        console.log('✅ Refresh response:', data)
-
-        const token = data?.access_token || data?.token || data?.accessToken
+        const token = data.token || data.access_token
         if (!token) throw new Error('Refresh token missing in response')
         this._setToken(token)
         return token
@@ -92,68 +117,62 @@ async login(email, password) {
 
     // 👤 Fetch user info
     async fetchMe() {
-      const { data } = await api.get('/users/me')
-      console.log('✅ FetchMe response:', data)
-      this._setUser(data)
-      return data
-    },
-
-    // ✏️ Update profile
-    async updateMe(payload) {
-      const { data } = await api.put('/users/me', payload)
-      console.log('✅ UpdateMe response:', data)
-      this._setUser(data)
-      return data
+      try {
+        const { data } = await api.get('/me')
+        const user = data.user || data
+        this._setUser(user)
+        return user
+      } catch (e) {
+        console.error('❌ FetchMe error:', e.response?.data || e.message)
+        this.forceLogout()
+        throw e
+      }
     },
 
     // 🚪 Logout
     async logout() {
       try {
         await api.post('/auth/logout')
-        console.log('✅ Logout success')
       } catch (e) {
         console.warn('⚠️ Logout request failed (ignored)')
       } finally {
-        this._setToken(null)
-        this._setUser(null)
+        this._clearAuth()
         router.push('/login')
       }
     },
 
-    // 🔒 Force logout
-    async forceLogout() {
-      this._setToken(null)
-      this._setUser(null)
+    forceLogout() {
+      this._clearAuth()
       router.push('/login')
     },
 
-    // -----------------------------
-    // Private helpers
-    // -----------------------------
     _setToken(token) {
       this.token = token
       if (token) {
         localStorage.setItem('token', token)
+        api.defaults.headers.common.Authorization = `Bearer ${token}`
       } else {
         localStorage.removeItem('token')
+        delete api.defaults.headers.common.Authorization
       }
     },
 
     _setUser(user) {
       this.user = user
-      if (user) {
-        localStorage.setItem('user', JSON.stringify(user))
-      } else {
-        localStorage.removeItem('user')
-      }
+      if (user) localStorage.setItem('user', JSON.stringify(user))
+      else localStorage.removeItem('user')
     },
 
-    // 🗂️ Restore from localStorage (on app start)
+    _clearAuth() {
+      this._setToken(null)
+      this._setUser(null)
+    },
+
     initFromStorage() {
       const token = localStorage.getItem('token')
       const user = localStorage.getItem('user')
-      if (token) this.token = token
-      if (user) this.user = JSON.parse(user)
+      if (token) this._setToken(token)
+      if (user) this._setUser(JSON.parse(user))
     },
   },
 })

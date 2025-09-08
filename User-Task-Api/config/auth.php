@@ -9,8 +9,8 @@ return [
     */
 
     'defaults' => [
-        'guard' => 'web',
-        'passwords' => 'users',
+        'guard' => env('AUTH_GUARD', 'api'),   // default is api instead of web
+        'passwords' => env('AUTH_PASSWORD_BROKER', 'users'),
     ],
 
     /*
@@ -24,10 +24,9 @@ return [
             'driver' => 'session',
             'provider' => 'users',
         ],
-        
-        // ✅ Add API guard for JWT
+
         'api' => [
-            'driver' => 'jwt',
+            'driver' => 'jwt',   // <-- use jwt here
             'provider' => 'users',
         ],
     ],
@@ -41,7 +40,7 @@ return [
     'providers' => [
         'users' => [
             'driver' => 'eloquent',
-            'model' => App\Models\User::class,
+            'model' => env('AUTH_MODEL', App\Models\User::class),
         ],
     ],
 
@@ -54,7 +53,7 @@ return [
     'passwords' => [
         'users' => [
             'provider' => 'users',
-            'table' => 'password_reset_tokens',
+            'table' => env('AUTH_PASSWORD_RESET_TOKEN_TABLE', 'password_reset_tokens'),
             'expire' => 60,
             'throttle' => 60,
         ],
@@ -66,6 +65,6 @@ return [
     |--------------------------------------------------------------------------
     */
 
-    'password_timeout' => 10800,
+    'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
 
 ];

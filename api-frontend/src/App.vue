@@ -1,17 +1,10 @@
 <template>
-<header>
-<div class="container">
-<Navbar />
-</div>
-</header>
-<main>
-<div class="container">
-<router-view />
-</div>
-</main>
+
+  <router-view />
 </template>
 
-
 <script setup>
-import Navbar from './components/Navbar.vue'
+import { useAuthStore } from "@/stores/auth"
+const auth = useAuthStore()
 </script>
+        
