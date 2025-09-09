@@ -12,6 +12,7 @@ class AuthServiceProvider extends ServiceProvider
         Task::class => TaskPolicy::class,
     ];
 
+    
     public function boot()
     {
         $this->registerPolicies();
