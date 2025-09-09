@@ -23,6 +23,7 @@
             Priority: <strong>{{ task.priority || 'medium' }}</strong> |
             Due: <strong>{{ task.due_date ? formatDate(task.due_date) : 'N/A' }}</strong>
           </p>
+          <p v-if="task.description" class="task-description">{{ task.description }}</p>
         </div>
         <div class="task-actions">
           <button @click="editTask(task)" class="edit-btn">✏️ Edit</button>
@@ -37,9 +38,10 @@
     </div>
 
     <!-- New Task Modal -->
-    <div v-if="showNewTask" class="modal">
+    <div v-if="showNewTask" class="modal" @click.self="showNewTask = false">
       <div class="modal-content">
         <h3>Create New Task</h3>
+        <div v-if="createError" class="error-message">{{ createError }}</div>
         <form @submit.prevent="createTask" class="task-form">
           <div class="form-group">
             <label>Task Title *</label>
@@ -55,9 +57,7 @@
             <label>Assign to User *</label>
             <select v-model="newTask.user_id" required>
               <option disabled value="">Select a user</option>
-              <option v-for="user in users" :key="user.id" :value="user.id">
-                {{ user.name }} ({{ user.email }})
-              </option>
+              <option v-for="user in users.filter(u => u.role !== 'admin')" :key="user.id" :value="user.id">{{ user.name }} ({{ user.email }})</option>
             </select>
           </div>
           
@@ -65,7 +65,7 @@
             <label>Priority</label>
             <select v-model="newTask.priority">
               <option value="low">Low</option>
-              <option value="medium" selected>Medium</option>
+              <option value="medium">Medium</option>
               <option value="high">High</option>
             </select>
           </div>
@@ -86,9 +86,10 @@
     </div>
 
     <!-- Edit Task Modal -->
-    <div v-if="showEditTask" class="modal">
+    <div v-if="showEditTask" class="modal" @click.self="showEditTask = false">
       <div class="modal-content">
         <h3>Edit Task</h3>
+        <div v-if="editError" class="error-message">{{ editError }}</div>
         <form @submit.prevent="updateTask" class="task-form">
           <div class="form-group">
             <label>Task Title *</label>
@@ -104,9 +105,7 @@
             <label>Assign to User *</label>
             <select v-model="editTaskData.user_id" required>
               <option disabled value="">Select a user</option>
-              <option v-for="user in users" :key="user.id" :value="user.id">
-                {{ user.name }} ({{ user.email }})
-              </option>
+              <option v-for="user in users.filter(u => u.role !== 'admin')" :key="user.id" :value="user.id">{{ user.name }} ({{ user.email }})</option>
             </select>
           </div>
           
@@ -157,6 +156,8 @@ const loading = ref(false)
 const creatingTask = ref(false)
 const updatingTask = ref(false)
 const error = ref(null)
+const createError = ref(null)
+const editError = ref(null)
 
 const newTask = ref({ 
   title: "", 
@@ -170,28 +171,54 @@ const editTaskData = ref({})
 
 function formatDate(dateString) {
   if (!dateString) return 'N/A'
-  const date = new Date(dateString)
-  return date.toLocaleDateString()
+  try {
+    const date = new Date(dateString)
+    return date.toLocaleDateString()
+  } catch (e) {
+    return 'Invalid Date'
+  }
+}
+
+function resetNewTask() {
+  newTask.value = { 
+    title: "", 
+    user_id: "",
+    description: "",
+    priority: "medium",
+    due_date: null
+  }
+  createError.value = null
+}
+
+function resetEditTask() {
+  editTaskData.value = {}
+  editError.value = null
 }
 
 async function loadTasks() {
   loading.value = true
   error.value = null
   try {
+    console.log('Loading tasks...')
     const { data } = await api.get("/tasks")
+    console.log('API Response:', data)
     
     // Handle different response structures
-    if (Array.isArray(data)) {
-      tasks.value = data
-    } else if (data && Array.isArray(data.data)) {
+    if (data.success && Array.isArray(data.data)) {
       tasks.value = data.data
+    } else if (Array.isArray(data)) {
+      tasks.value = data
     } else {
       tasks.value = []
       console.warn("Unexpected API response format:", data)
     }
+    
+    console.log('Tasks loaded:', tasks.value.length)
   } catch (e) {
     console.error("Error loading tasks:", e)
-    error.value = e.response?.data?.message || e.message || "Failed to load tasks"
+    const errorMsg = e.response?.data?.error || e.response?.data?.message || e.message || "Failed to load tasks"
+    error.value = errorMsg
+    tasks.value = []
   } finally {
     loading.value = false
   }
@@ -199,74 +226,102 @@ async function loadTasks() {
 
 async function loadUsers() {
   try {
+    console.log('Loading users...')
     const { data } = await api.get("/users")
+    console.log('Users API Response:', data)
     users.value = Array.isArray(data) ? data : []
+    console.log('Users loaded:', users.value.length)
   } catch (e) {
     console.error("Error loading users:", e)
-    alert("Error loading users: " + (e.response?.data?.error || e.message))
+    const errorMsg = e.response?.data?.error || e.response?.data?.message || e.message
+    console.warn("Failed to load users:", errorMsg)
     users.value = []
   }
 }
 
 async function createTask() {
+  if (!newTask.value.title.trim() || !newTask.value.user_id) {
+    createError.value = "Please fill in all required fields"
+    return
+  }
+
   creatingTask.value = true
+  createError.value = null
+  
   try {
     const taskData = {
-      title: newTask.value.title,
-      user_id: newTask.value.user_id,
+      title: newTask.value.title.trim(),
+      user_id: parseInt(newTask.value.user_id),
       description: newTask.value.description || "",
       priority: newTask.value.priority || "medium",
       due_date: newTask.value.due_date || null
     }
 
+    console.log('Creating task:', taskData)
     const { data } = await api.post("/tasks", taskData)
+    console.log('Create task response:', data)
     
-    if (data.task) {
-      tasks.value.push(data.task)
-    } else if (data) {
-      tasks.value.push(data)
+    if (data.success && data.task) {
+      tasks.value.unshift(data.task) // Add to beginning
+      showNewTask.value = false
+      resetNewTask()
+      console.log('Task created successfully')
+    } else {
+      createError.value = "Unexpected response format"
     }
     
-    // Reset form
-    newTask.value = { 
-      title: "", 
-      user_id: "",
-      description: "",
-      priority: "medium",
-      due_date: null
-    }
-    showNewTask.value = false
   } catch (e) {
     console.error("Error creating task:", e)
-    alert("Error creating task: " + (e.response?.data?.error || e.message))
+    const errorMsg = e.response?.data?.error || e.response?.data?.message || e.message || "Failed to create task"
+    createError.value = errorMsg
   } finally {
     creatingTask.value = false
   }
 }
 
 function editTask(task) {
-  editTaskData.value = { ...task }
+  editTaskData.value = { 
+    ...task,
+    due_date: task.due_date ? new Date(task.due_date).toISOString().split('T')[0] : null
+  }
+  editError.value = null
   showEditTask.value = true
 }
 
 async function updateTask() {
   updatingTask.value = true
+  editError.value = null
+  
   try {
-    const { data } = await api.put(`/tasks/${editTaskData.value.id}`, editTaskData.value)
+    const updateData = {
+      title: editTaskData.value.title,
+      description: editTaskData.value.description || "",
+      user_id: parseInt(editTaskData.value.user_id),
+      status: editTaskData.value.status,
+      priority: editTaskData.value.priority,
+      due_date: editTaskData.value.due_date || null
+    }
+
+    console.log('Updating task:', updateData)
+    const { data } = await api.put(`/tasks/${editTaskData.value.id}`, updateData)
+    console.log('Update task response:', data)
     
-    const index = tasks.value.findIndex(t => t.id === editTaskData.value.id)
-    if (index !== -1) {
-      if (data.task) {
+    if (data.success && data.task) {
+      const index = tasks.value.findIndex(t => t.id === editTaskData.value.id)
+      if (index !== -1) {
         tasks.value[index] = data.task
-      } else if (data) {
-        tasks.value[index] = data
       }
+      showEditTask.value = false
+      resetEditTask()
+      console.log('Task updated successfully')
+    } else {
+      editError.value = "Unexpected response format"
     }
     
-    showEditTask.value = false
   } catch (e) {
     console.error("Error updating task:", e)
-    alert("Error updating task: " + (e.response?.data?.error || e.message))
+    const errorMsg = e.response?.data?.error || e.response?.data?.message || e.message || "Failed to update task"
+    editError.value = errorMsg
   } finally {
     updatingTask.value = false
   }
@@ -276,15 +331,23 @@ async function deleteTask(id) {
   if (!confirm("Are you sure you want to delete this task?")) return
   
   try {
-    await api.delete(`/tasks/${id}`)
-    tasks.value = tasks.value.filter(t => t.id !== id)
+    console.log('Deleting task:', id)
+    const { data } = await api.delete(`/tasks/${id}`)
+    console.log('Delete task response:', data)
+    
+    if (data.success || data.message) {
+      tasks.value = tasks.value.filter(t => t.id !== id)
+      console.log('Task deleted successfully')
+    }
   } catch (e) {
     console.error("Error deleting task:", e)
-    alert("Error deleting task: " + (e.response?.data?.error || e.message))
+    const errorMsg = e.response?.data?.error || e.response?.data?.message || e.message || "Failed to delete task"
+    alert("Error deleting task: " + errorMsg)
   }
 }
 
 onMounted(() => {
+  console.log('Component mounted, loading data...')
   loadTasks()
   loadUsers()
 })
@@ -376,9 +439,16 @@ h2 {
 }
 
 .task-details {
-  margin: 5px 0 0;
+  margin: 5px 0;
   font-size: 14px;
   color: #7f8c8d;
+}
+
+.task-description {
+  margin: 5px 0 0;
+  font-size: 14px;
+  color: #555;
+  font-style: italic;
 }
 
 .task-actions {

@@ -1,21 +1,24 @@
-// vite.config.js
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import path from 'path'
+import { fileURLToPath, URL } from 'node:url'
 
 export default defineConfig({
   plugins: [vue()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),   // 👈 add this
-    },
+      '@': fileURLToPath(new URL('./src', import.meta.url))
+    }
   },
   server: {
-    proxy: {
-      '/api': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-      },
-    },
-  },
+    port: 5173,
+    host: true,
+    // Prevent serving Vue files as static assets
+    fs: {
+      strict: true,
+      allow: [
+        '.', // project root
+        '/src', // src directory
+      ]
+    }
+  }
 })

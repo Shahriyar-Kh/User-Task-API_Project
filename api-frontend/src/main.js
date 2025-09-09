@@ -3,16 +3,17 @@ import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
 import './assets/main.css'
-import { useAuthStore } from './stores/auth'  // ✅ import auth store
 
 const app = createApp(App)
 const pinia = createPinia()
 
 app.use(pinia)
-
-// ✅ Restore token & user before router navigation
-const auth = useAuthStore(pinia)
-auth.initFromStorage()
-
 app.use(router)
+
+// Initialize auth store after pinia is mounted
+const authStore = pinia.state.value.auth
+if (authStore) {
+  authStore.initFromStorage()
+}
+
 app.mount('#app')
